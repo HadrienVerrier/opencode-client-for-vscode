@@ -4,7 +4,7 @@
   "displayName": "OpenCode (Unofficial)",
   "description": "The OpenCode coding agent in a VS Code sidebar, connected to your own OpenCode server.",
   "version": "0.1.0",
-  "publisher": "hadrien",
+  "publisher": "StudioVisioneo",
   "license": "MIT",
   "private": true,
   "icon": "media/icon.png",

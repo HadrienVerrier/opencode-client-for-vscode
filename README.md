@@ -13,10 +13,10 @@ Not affiliated with OpenCode or with Microsoft.
 ## Install
 
 - **Marketplace**: search for `OpenCode (Unofficial)`, or run
-  `code --install-extension hadrien.opencode-vscode`.
+  `code --install-extension StudioVisioneo.opencode-vscode`.
 - **VSIX**: download it from the [releases](https://github.com/HadrienVerrier/opencode-for-vscode/releases)
   and run `code --install-extension opencode-vscode-<version>.vsix`.
-- **Open VSX** (VSCodium): `ovsx` package id `hadrien/opencode-vscode`, when published there.
+- **Open VSX** (VSCodium): `ovsx` package id `StudioVisioneo/opencode-vscode`, when published there.
 
 With no server URL configured, the extension starts `opencode serve` in the window's folder with a
 random per-process password and stops it when the window closes. It can also connect to a remote
@@ -79,7 +79,7 @@ tag must match the version in `packages/vscode/package.json`.
 First-time Marketplace setup:
 
 1. Create a publisher at <https://marketplace.visualstudio.com/manage> whose ID matches `publisher` in
-   `packages/vscode/package.json` (`hadrien`).
+   `packages/vscode/package.json` (`StudioVisioneo`).
 2. Create an Azure DevOps personal access token with **Marketplace: Manage** scope, on the same
    account.
 3. Add it to the repository as the `VSCE_PAT` secret (Settings → Secrets and variables → Actions).
