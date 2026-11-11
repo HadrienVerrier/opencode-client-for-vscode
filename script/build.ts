@@ -7,8 +7,8 @@ import { join } from "node:path"
  * builds there. Everything it writes lives under `.build/`.
  */
 const REPO = "anomalyco/opencode"
-// `release: v2.2.7`
-const REF = "fedc6f208aa2bd54c1019227214568083f6380ad"
+// Renovate bumps this line: the tag is what it tracks, the commit is what the build downloads.
+const REF = "fedc6f208aa2bd54c1019227214568083f6380ad" // v2.2.7
 
 const root = join(import.meta.dir, "..")
 const build = join(root, ".build")

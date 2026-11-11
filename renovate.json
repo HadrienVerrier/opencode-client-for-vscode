@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "group:allNonMajor"],
+  "timezone": "Europe/Paris",
+  "schedule": ["before 6am on monday"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The OpenCode release the GUI is built from",
+      "fileMatch": ["^script/build\\.ts$"],
+      "matchStrings": ["const REF = \"(?<currentDigest>[0-9a-f]{40})\" // (?<currentValue>v?\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "anomalyco/opencode",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver",
+      "extractVersionTemplate": "^v?(?<version>\\d+\\.\\d+\\.\\d+)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": ["github-tags"],
+      "matchPackageNames": ["anomalyco/opencode"],
+      "labels": ["opencode"],
+      "prBodyNotes": [
+        "Bumping this changes the GUI code the extension embeds: run `bun script/build.ts` and try the VSIX before merging.",
+        "`patches/opencode-gui.patch` may no longer apply; if so, regenerate it from the development checkout."
+      ]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    }
+  ]
+}

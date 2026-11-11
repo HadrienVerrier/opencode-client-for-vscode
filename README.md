@@ -49,7 +49,22 @@ development checkout (`git diff <upstream>..HEAD -- packages/app packages/gui-pl
 | `packages/vscode`           | The extension: extension host, webview bridge, tests, README   |
 | `patches/opencode-gui.patch`| The GUI changes the extension needs, applied to upstream        |
 | `script/build.ts`           | Fetches upstream, applies the patch, builds the VSIX            |
-| `.github/workflows`         | Typecheck, tests, build, Marketplace publish on a `v*` tag      |
+| `renovate.json`             | Keeps the OpenCode pin and the actions up to date               |
+| `.github/workflows`         | Typecheck, tests, build, Marketplace publish on a tag           |
+
+## Keeping up with OpenCode
+
+The GUI is pinned to one upstream release in `script/build.ts` (`const REF = "…" // v2.x.y`). Renovate
+opens a pull request when a new `vX.Y.Z` tag appears; the GitHub Actions versions are updated the same
+way.
+
+A bump is not a dependency bump: it changes the GUI code the extension embeds. Build the VSIX from the
+branch and try it. If `patches/opencode-gui.patch` no longer applies, regenerate it from the
+development checkout:
+
+```sh
+git diff <new-ref>..HEAD -- packages/app packages/gui-plugins packages/plugin > patches/opencode-gui.patch
+```
 
 ## Releasing
 
@@ -60,6 +75,14 @@ git tag 0.1.1 && git push --tags
 The workflow builds the VSIX, attaches it to a GitHub release, and publishes it to the Marketplace
 when the `VSCE_PAT` secret is set. Tags are plain semver (`0.1.1`); `v0.1.1` is accepted too, and the
 tag must match the version in `packages/vscode/package.json`.
+
+First-time Marketplace setup:
+
+1. Create a publisher at <https://marketplace.visualstudio.com/manage> whose ID matches `publisher` in
+   `packages/vscode/package.json` (`hadrien`).
+2. Create an Azure DevOps personal access token with **Marketplace: Manage** scope, on the same
+   account.
+3. Add it to the repository as the `VSCE_PAT` secret (Settings → Secrets and variables → Actions).
 
 ## AI-assisted development
 
