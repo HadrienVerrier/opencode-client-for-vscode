@@ -152,7 +152,7 @@ export async function activate(context: ExtensionContext) {
     config,
     setup,
     save,
-    message: (message) => receive(message),
+    message: (message) => receive(context, message),
     editors: () => editorFiles().paths,
     selection: () => lastSelection,
   })
@@ -331,7 +331,12 @@ function provider(target: WebviewHost): WebviewViewProvider {
   return { resolveWebviewView: (view: WebviewView) => target.resolve(view) }
 }
 
-function receive(message: HostMessage) {
+function receive(context: ExtensionContext, message: HostMessage) {
+  if (message.type === "opencode/credential") {
+    void adoptCredential(context, message)
+    return
+  }
+
   if (message.type === "opencode/install") {
     installOpenCode()
     return
@@ -363,6 +368,20 @@ function receive(message: HostMessage) {
   if (message.type === "opencode/notify") {
     void window.showInformationMessage([message.title, message.description].filter(Boolean).join(" — "))
   }
+}
+
+/**
+ * The GUI signed in to the configured server by itself, from a server list that outlives an extension
+ * rename and its secrets. Keep the password it used, so the status bar checks the same server. A
+ * password saved here wins: the GUI may still hold an older one.
+ */
+async function adoptCredential(context: ExtensionContext, message: { serverUrl: string; password: string }) {
+  if (typeof message.serverUrl !== "string" || typeof message.password !== "string" || !message.password) return
+  const configured = normalizeServerUrl(workspace.getConfiguration("opencode").get<string>("serverUrl", ""))
+  if (!configured || normalizeServerUrl(message.serverUrl) !== configured) return
+  if (await context.secrets.get(passwordKey(configured))) return
+  await context.secrets.store(passwordKey(configured), message.password)
+  void check(context)
 }
 
 /** Attaches the selected lines of the active editor, or the whole file when nothing is selected. */
@@ -647,7 +666,8 @@ async function check(context: ExtensionContext): Promise<{ error?: string }> {
       if (status) status.text = "$(lock) OpenCode: sign-in"
       if (notice !== "sign-in") {
         notice = "sign-in"
-        void window.showWarningMessage(`OpenCode: ${server.url} rejected the password.`, "Configure").then((choice) => {
+        const reason = server.password ? "rejected the password" : "asks for a password"
+        void window.showWarningMessage(`OpenCode: ${server.url} ${reason}.`, "Configure").then((choice) => {
           if (choice === "Configure") void host?.configure()
         })
       }

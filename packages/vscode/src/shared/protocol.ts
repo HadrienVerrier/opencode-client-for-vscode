@@ -33,6 +33,8 @@ export type HostMessage =
   | { type: "opencode/notify"; title: string; description?: string }
   | { type: "opencode/openFile"; root: string; path: string; selection?: { start: number; end: number } }
   | { type: "opencode/saveServer"; serverUrl: string; password?: string }
+  /** The GUI signed in to a server itself: its password, so the extension checks the same server. */
+  | { type: "opencode/credential"; serverUrl: string; password: string }
   | { type: "opencode/pickFiles" }
   | { type: "opencode/install" }
   | { type: "opencode/retry" }
