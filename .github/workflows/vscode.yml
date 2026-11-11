@@ -44,8 +44,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: opencode-vscode
-          path: opencode-vscode-*.vsix
+          name: vsix
+          path: "*.vsix"
           if-no-files-found: error
 
       # Publishing is tag-only: `git tag 0.1.1 && git push --tags` (`v0.1.1` works too).
@@ -65,7 +65,7 @@ jobs:
         run: |
           log=$(mktemp)
           set +e
-          bun x @vscode/vsce@4.1.0 publish --oidc --no-dependencies --packagePath opencode-vscode-*.vsix >"$log" 2>&1
+          bun x @vscode/vsce@4.1.0 publish --oidc --no-dependencies --packagePath *.vsix >"$log" 2>&1
           status=$?
           set -e
           cat "$log"
@@ -82,5 +82,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 &&
-            gh release upload "$GITHUB_REF_NAME" opencode-vscode-*.vsix --clobber ||
-            gh release create "$GITHUB_REF_NAME" opencode-vscode-*.vsix --generate-notes --verify-tag
+            gh release upload "$GITHUB_REF_NAME" *.vsix --clobber ||
+            gh release create "$GITHUB_REF_NAME" *.vsix --generate-notes --verify-tag
