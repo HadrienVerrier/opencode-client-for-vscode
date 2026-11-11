@@ -72,17 +72,18 @@ git diff <new-ref>..HEAD -- packages/app packages/gui-plugins packages/plugin > 
 git tag 0.1.1 && git push --tags
 ```
 
-The workflow builds the VSIX, attaches it to a GitHub release, and publishes it to the Marketplace
-when the `VSCE_PAT` secret is set. Tags are plain semver (`0.1.1`); `v0.1.1` is accepted too, and the
-tag must match the version in `packages/vscode/package.json`.
+The workflow builds the VSIX, attaches it to a GitHub release, and publishes it to the Marketplace.
+Tags are plain semver (`0.1.1`); `v0.1.1` is accepted too, and the tag must match the version in
+`packages/vscode/package.json`.
 
-First-time Marketplace setup:
+Publishing uses Marketplace **trusted publishing**, not a personal access token: the publisher
+(`StudioVisioneo` → Trusted Publishing) trusts this repository and this workflow file, and the job
+authenticates with `vsce publish --oidc` plus its `id-token: write` permission. There is no secret to
+store, and there is nothing to rotate; renaming `.github/workflows/vscode.yml` means updating the
+trusted workflow in the publisher settings.
 
-1. Create a publisher at <https://marketplace.visualstudio.com/manage> whose ID matches `publisher` in
-   `packages/vscode/package.json` (`StudioVisioneo`).
-2. Create an Azure DevOps personal access token with **Marketplace: Manage** scope, on the same
-   account.
-3. Add it to the repository as the `VSCE_PAT` secret (Settings → Secrets and variables → Actions).
+A PAT still works for a manual publish from a workstation:
+`bun x @vscode/vsce publish -p <token>`.
 
 ## AI-assisted development
 
