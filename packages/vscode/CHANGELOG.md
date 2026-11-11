@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Repository renamed to `opencode-client-for-vscode`; marketplace links updated.
+
 ## 0.1.0
 
 First public release. Unofficial community extension, not published or endorsed by the OpenCode team.

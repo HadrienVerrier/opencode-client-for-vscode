@@ -3,7 +3,7 @@
   "name": "opencode-client-for-vscode",
   "displayName": "OpenCode Client for VS Code",
   "description": "The OpenCode coding agent in a VS Code sidebar, connected to your own OpenCode server.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "StudioVisioneo",
   "license": "MIT",
   "private": true,
