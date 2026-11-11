@@ -15,6 +15,7 @@ test("paints the container background behind the frame while the GUI boots", () 
   expect(webviewHtml("http://a", "sidebar")).toContain('"--vscode-sideBar-background"')
   expect(webviewHtml("http://a", "panel")).toContain('"--vscode-editor-background"')
   expect(webviewHtml("http://a", "sidebar")).toContain('searchParams.set("background"')
+  expect(webviewHtml("http://a", "sidebar")).toContain('frame.style.opacity = "1"')
 })
 test("retries the frame until the GUI answers", () => {
   const html = webviewHtml("http://127.0.0.1:47801", "sidebar")

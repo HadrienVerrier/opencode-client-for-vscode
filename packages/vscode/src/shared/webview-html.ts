@@ -17,7 +17,7 @@ export function webviewHtml(frameUrl: string, surface: "sidebar" | "panel") {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data:;" />
 <style>
 html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
-iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+iframe { display: block; width: 100%; height: 100%; border: 0; background: transparent; opacity: 0; }
 #setup { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; overflow: auto; background: var(--vscode-editor-background, #1e1e1e); }
 #setup[hidden] { display: none; }
 #setup form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; }
@@ -137,7 +137,7 @@ window.addEventListener("message", (event) => {
 data = event.data;
 if (!data) return;
 if (event.source === frame.contentWindow) {
-if (data.type === "opencode/ready") { ready = true; while (queued.length) post(queued.shift()); }
+if (data.type === "opencode/ready") { ready = true; frame.style.opacity = "1"; while (queued.length) post(queued.shift()); }
 vscode.postMessage(data);
 return;
 }
