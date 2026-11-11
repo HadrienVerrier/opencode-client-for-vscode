@@ -54,11 +54,12 @@ development checkout (`git diff <upstream>..HEAD -- packages/app packages/gui-pl
 ## Releasing
 
 ```sh
-git tag v0.1.1 && git push --tags
+git tag 0.1.1 && git push --tags
 ```
 
 The workflow builds the VSIX, attaches it to a GitHub release, and publishes it to the Marketplace
-when the `VSCE_PAT` secret is set.
+when the `VSCE_PAT` secret is set. Tags are plain semver (`0.1.1`); `v0.1.1` is accepted too, and the
+tag must match the version in `packages/vscode/package.json`.
 
 ## AI-assisted development
 
