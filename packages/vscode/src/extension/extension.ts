@@ -663,11 +663,14 @@ async function check(context: ExtensionContext): Promise<{ error?: string }> {
   if (!result.ok) {
     log(`server ${server.url}: ${result.status ? `HTTP ${result.status}` : result.error}`)
     if (result.status === 401 || result.status === 403) {
-      if (status) status.text = "$(lock) OpenCode: sign-in"
-      if (notice !== "sign-in") {
+      if (status) {
+        status.text = "$(lock) OpenCode: sign-in"
+        status.command = "opencode.configure"
+      }
+      // No password stored yet: the GUI may sign in on its own and report it, so stay quiet.
+      if (server.password && notice !== "sign-in") {
         notice = "sign-in"
-        const reason = server.password ? "rejected the password" : "asks for a password"
-        void window.showWarningMessage(`OpenCode: ${server.url} ${reason}.`, "Configure").then((choice) => {
+        void window.showWarningMessage(`OpenCode: ${server.url} rejected the password.`, "Configure").then((choice) => {
           if (choice === "Configure") void host?.configure()
         })
       }
@@ -688,6 +691,7 @@ async function check(context: ExtensionContext): Promise<{ error?: string }> {
 
   if (status) {
     status.text = `$(comment-discussion) OpenCode ${result.version}`
+    status.command = "opencode.switchServer"
     status.tooltip = `OpenCode ${result.version} at ${server.url}\nGUI built for ${GUI_VERSION}\npassword: ${
       server.password ? "saved" : "none"
     }`
