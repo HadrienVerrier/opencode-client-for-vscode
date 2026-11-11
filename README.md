@@ -13,10 +13,10 @@ Not affiliated with OpenCode or with Microsoft.
 ## Install
 
 - **Marketplace**: search for `OpenCode (Unofficial)`, or run
-  `code --install-extension StudioVisioneo.opencode-client-for-vscode`.
+  `code --install-extension StudioVisioneo.opencode-client-for-vs-code`.
 - **VSIX**: download it from the [releases](https://github.com/HadrienVerrier/opencode-client-for-vscode/releases)
-  and run `code --install-extension opencode-client-for-vscode-<version>.vsix`.
-- **Open VSX** (VSCodium): `ovsx` package id `StudioVisioneo/opencode-client-for-vscode`, when published there.
+  and run `code --install-extension opencode-client-for-vs-code-<version>.vsix`.
+- **Open VSX** (VSCodium): `ovsx` package id `StudioVisioneo/opencode-client-for-vs-code`, when published there.
 
 With no server URL configured, the extension starts `opencode serve` in the window's folder with a
 random per-process password and stops it when the window closes. It can also connect to a remote
@@ -36,7 +36,7 @@ bun script/build.ts
 
 The script downloads the pinned upstream commit, applies `patches/opencode-gui.patch`, copies
 `packages/vscode` into it, installs the monorepo, builds the webview and the extension host, and leaves
-`opencode-client-for-vscode-<version>.vsix` at the repository root. Everything happens under `.build/`; nothing
+`opencode-client-for-vs-code-<version>.vsix` at the repository root. Everything happens under `.build/`; nothing
 outside it is modified.
 
 To move to a newer OpenCode, bump `REF` in `script/build.ts` and regenerate the patch from your

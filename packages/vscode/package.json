@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-client-for-vscode",
+  "name": "opencode-client-for-vs-code",
   "displayName": "OpenCode Client for VS Code",
   "description": "The OpenCode coding agent in a VS Code sidebar, connected to your own OpenCode server.",
   "version": "0.1.1",
