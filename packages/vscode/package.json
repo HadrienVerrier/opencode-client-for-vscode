@@ -27,12 +27,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/HadrienVerrier/opencode-for-vscode.git",
+    "url": "https://github.com/HadrienVerrier/opencode-client-for-vscode.git",
     "directory": "packages/vscode"
   },
-  "homepage": "https://github.com/HadrienVerrier/opencode-for-vscode#readme",
+  "homepage": "https://github.com/HadrienVerrier/opencode-client-for-vscode#readme",
   "bugs": {
-    "url": "https://github.com/HadrienVerrier/opencode-for-vscode/issues"
+    "url": "https://github.com/HadrienVerrier/opencode-client-for-vscode/issues"
   },
   "engines": {
     "vscode": "^1.94.0"

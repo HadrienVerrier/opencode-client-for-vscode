@@ -14,7 +14,7 @@ Not affiliated with OpenCode or with Microsoft.
 
 - **Marketplace**: search for `OpenCode (Unofficial)`, or run
   `code --install-extension StudioVisioneo.opencode-client-for-vscode`.
-- **VSIX**: download it from the [releases](https://github.com/HadrienVerrier/opencode-for-vscode/releases)
+- **VSIX**: download it from the [releases](https://github.com/HadrienVerrier/opencode-client-for-vscode/releases)
   and run `code --install-extension opencode-client-for-vscode-<version>.vsix`.
 - **Open VSX** (VSCodium): `ovsx` package id `StudioVisioneo/opencode-client-for-vscode`, when published there.
 
