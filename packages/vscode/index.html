@@ -8,6 +8,17 @@
     />
     <title>OpenCode</title>
     <meta name="theme-color" content="#fafafa" />
+    <script>
+      // The GUI waits for the extension handshake before it paints: show the editor background
+      // meanwhile, so the sidebar never flashes the browser's white.
+      ;(() => {
+        const background = new URLSearchParams(location.search).get("background")
+        if (!background) return
+        const style = document.createElement("style")
+        style.textContent = `html, body { background: ${background} }`
+        document.head.append(style)
+      })()
+    </script>
   </head>
   <body
     class="antialiased overscroll-none font-(family-name:--font-family-text) text-[13px] font-[440] overflow-hidden bg-v2-background-bg-deep"

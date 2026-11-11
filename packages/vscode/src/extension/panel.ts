@@ -111,7 +111,8 @@ export class WebviewHost {
     }
 
     try {
-      webview.html = webviewHtml(await this.input.frame())
+      // The sidebar paints its own background behind the frame; an editor tab paints the editor's.
+      webview.html = webviewHtml(await this.input.frame(), webview === this.view?.webview ? "sidebar" : "panel")
     } catch (cause) {
       webview.html = errorHtml(cause instanceof Error ? cause.message : String(cause))
       return

@@ -5,8 +5,10 @@ import { randomBytes } from "node:crypto"
  * forwards messages between the webview API and the iframe. The GUI must run on a loopback origin,
  * not `vscode-webview://`, because the OpenCode server only allows `http://127.0.0.1:*` origins.
  */
-export function webviewHtml(frameUrl: string) {
+export function webviewHtml(frameUrl: string, surface: "sidebar" | "panel") {
   const nonce = randomBytes(16).toString("base64")
+  // Painted behind the iframe until the GUI has its theme, so the webview never flashes the browser's white.
+  const backdrop = surface === "sidebar" ? "--vscode-sideBar-background" : "--vscode-editor-background"
 
   return `<!doctype html>
 <html lang="en">
@@ -66,7 +68,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: trans
 </div>
 </form>
 </div>
-<iframe id="frame" src="${escapeAttribute(frameUrl)}" allow="clipboard-read; clipboard-write"></iframe>
+<iframe id="frame" allow="clipboard-read; clipboard-write"></iframe>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 const frame = document.getElementById("frame");
@@ -80,7 +82,14 @@ const installMessage = document.getElementById("install-message");
 const installCommand = document.getElementById("install-command");
 const installButton = document.getElementById("install-button");
 const local = document.getElementById("local");
-const target = new URL(frame.src).origin;
+// The GUI cannot paint before its theme arrives, so it gets the editor background through the URL.
+const source = new URL(${jsString(frameUrl)});
+const computed = getComputedStyle(document.body);
+const background =
+  computed.getPropertyValue("${backdrop}").trim() || computed.getPropertyValue("--vscode-editor-background").trim();
+if (background) source.searchParams.set("background", background);
+frame.src = source.href;
+const target = source.origin;
 let ready = false;
 let attempts = 0;
 // Chat requests made while the GUI boots: it ignores messages posted before its ready handshake.
@@ -149,6 +158,7 @@ frame.src = frame.src;
 </html>`
 }
 
-function escapeAttribute(value: string) {
-  return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char)
+/** A JS string literal that cannot close the script tag, whatever the URL holds. */
+function jsString(value: string) {
+  return JSON.stringify(value).replace(/</g, "\\u003c")
 }
