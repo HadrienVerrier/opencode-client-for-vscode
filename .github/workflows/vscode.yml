@@ -62,7 +62,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         # Trusted publishing: the publisher trusts this workflow, and the job proves its identity with
         # the workflow's OIDC token. No PAT. See `permissions: id-token: write` above.
-        run: bun x @vscode/vsce@4.1.0 publish --oidc --no-dependencies --packagePath opencode-vscode-*.vsix
+        run: |
+          log=$(mktemp)
+          set +e
+          bun x @vscode/vsce@4.1.0 publish --oidc --no-dependencies --packagePath opencode-vscode-*.vsix >"$log" 2>&1
+          status=$?
+          set -e
+          cat "$log"
+          if [ "$status" -ne 0 ]; then
+            # The step log needs a token to read; annotations are public, so surface the reason there.
+            reason=$(tail -c 900 "$log" | tr '\n' ' ' | tr -d '%')
+            echo "::error title=Marketplace publish failed::$reason"
+            exit "$status"
+          fi
 
       - name: Attach the VSIX to the release
         if: startsWith(github.ref, 'refs/tags/')
