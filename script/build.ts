@@ -32,7 +32,14 @@ if (!(await Bun.file(join(upstream, "package.json")).exists())) {
 // The patch must apply to a pristine tree, so every build starts from a copy of it.
 await rm(work, { recursive: true, force: true })
 await cp(upstream, work, { recursive: true })
-await Bun.$`git apply --whitespace=nowarn ${join(root, "patches/opencode-gui.patch")}`.cwd(work)
+// `.build` can sit inside a git checkout; without a ceiling, `git apply` resolves the patch paths
+// against that repository instead of the extracted tree and silently skips every file.
+const patch = join(root, "patches/opencode-gui.patch")
+await Bun.$`GIT_CEILING_DIRECTORIES=${build} git apply --whitespace=nowarn ${patch}`.cwd(work)
+// The patch creates this file: its absence means the patch was skipped, not applied.
+if (!(await Bun.file(join(work, "packages/app/src/runtime/plugin/screen-surface.ts")).exists())) {
+  throw new Error("OpenCode: patches/opencode-gui.patch did not apply")
+}
 await cp(join(root, "packages/vscode"), join(work, "packages/vscode"), {
   recursive: true,
   filter: (source) => !/(\/node_modules|\/dist)(\/|$)|\.vsix$/.test(source),
