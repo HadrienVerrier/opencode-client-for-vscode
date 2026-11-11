@@ -1,0 +1,68 @@
+name: vscode
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: vscode-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  vsix:
+    runs-on: ubuntu-latest
+    env:
+      # Upstream pins this in its package.json; the extracted tree expects the same one.
+      BUN_VERSION: 1.4.4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Build the VSIX
+        run: bun script/build.ts
+
+      - name: Typecheck
+        working-directory: .build/work/packages/vscode
+        run: bun run typecheck
+      - name: Test
+        working-directory: .build/work/packages/vscode
+        run: bun run test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-vscode
+          path: opencode-vscode-*.vsix
+          if-no-files-found: error
+
+      # Publishing is tag-only: `git tag v0.1.1 && git push --tags`.
+      - name: Publish to the Marketplace
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        # Without a PAT the job still builds and attaches the VSIX to the release.
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is not set: skipping the Marketplace publish."
+            exit 0
+          fi
+          bun x @vscode/vsce publish --no-dependencies --packagePath opencode-vscode-*.vsix --pat "$VSCE_PAT"
+
+      - name: Attach the VSIX to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 &&
+            gh release upload "$GITHUB_REF_NAME" opencode-vscode-*.vsix --clobber ||
+            gh release create "$GITHUB_REF_NAME" opencode-vscode-*.vsix --generate-notes --verify-tag

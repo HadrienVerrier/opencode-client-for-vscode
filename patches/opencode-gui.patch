@@ -1,0 +1,864 @@
+diff --git a/packages/app/src/composer/attachments/attachments.css b/packages/app/src/composer/attachments/attachments.css
+index be74198b07..3533d664ce 100644
+--- a/packages/app/src/composer/attachments/attachments.css
++++ b/packages/app/src/composer/attachments/attachments.css
+@@ -99,6 +99,16 @@
+ [data-component="composer-attachments"] {
+   timeline-scope: --composer-attachments-scroll;
+ 
++  /* The context tiles sit right above the prompt, where height is scarce: one compact line each. */
++  [data-component="attachment-card"] {
++    gap: 1px;
++    padding: 5px 8px;
++  }
++
++  [data-component="attachment-card"] [data-slot="attachment-card-subtitle"] {
++    min-height: 14px;
++  }
++
+   [data-slot^="composer-attachments-fade-"] {
+     visibility: hidden;
+   }
+diff --git a/packages/app/src/new-session/screen.tsx b/packages/app/src/new-session/screen.tsx
+index 9e50542095..3d55e5076d 100644
+--- a/packages/app/src/new-session/screen.tsx
++++ b/packages/app/src/new-session/screen.tsx
+@@ -3,9 +3,11 @@ import { useNewSessionLocationDialog } from "@/new-session/location/dialog"
+ import { useTabs, type DraftTab } from "@/shell/tabs/tabs"
+ import { useLayout } from "@/shell/state/layout"
+ import { useSearchParams } from "@solidjs/router"
+-import { createEffect, createMemo, createResource, on, untrack } from "solid-js"
++import { createEffect, createMemo, createResource, on, onCleanup, untrack } from "solid-js"
+ import { createComposerModel } from "@/composer/model"
+ import { useComposerCommands } from "@/composer/commands"
++import { createScreenSurface } from "@/runtime/plugin/screen-surface"
++import { usePluginAttachment } from "@/runtime/plugin/attachment"
+ import { createNewSessionComposerAdapter, createNewSessionStartStore } from "./composer-adapter"
+ import { NewSessionView } from "./view"
+ import { createNewSessionWorkspaceController } from "./workspace/controller"
+@@ -54,6 +56,12 @@ export default function NewSessionPage(props: { draftId: string }) {
+   const model = createComposerModel(composer.adapter)
+   useComposerCommands({ model: composer.model })
+ 
++  // The draft's screen, so plugin rows above the prompt work before the session exists. It has no quotes to offer, and
++  // no plugin command routes through the draft's focus, which the app tracks itself.
++  const surface = createScreenSurface(() => false)
++  surface.bindPrompt({ quotable: () => false, focus: model.restoreFocus, focused: () => false })
++  onCleanup(usePluginAttachment().screen(surface.screen))
++
+   const project = createPromptProjectController({ controls: composer.project })
+   const location = useNewSessionLocationDialog({ project, workspace, onDone: model.restoreFocus })
+ 
+@@ -100,7 +108,13 @@ export default function NewSessionPage(props: { draftId: string }) {
+     <div class="relative size-full overflow-hidden flex flex-col">
+       {suspendUntilPromptReady()}
+       <div class="flex-1 min-h-0 flex flex-col gap-2 px-[var(--shell-inline-inset,8px)] pb-[var(--shell-bottom-inset,8px)] pt-[var(--shell-top-inset,8px)]">
+-        <NewSessionView composer={model} project={project} workspace={workspace} location={location} />
++        <NewSessionView
++          composer={model}
++          project={project}
++          workspace={workspace}
++          location={location}
++          screen={surface.screen}
++        />
+       </div>
+     </div>
+   )
+diff --git a/packages/app/src/new-session/view.tsx b/packages/app/src/new-session/view.tsx
+index 8bb849109f..033a249fc5 100644
+--- a/packages/app/src/new-session/view.tsx
++++ b/packages/app/src/new-session/view.tsx
+@@ -20,6 +20,8 @@ import { createPresence } from "@/runtime/presence"
+ import { Composer } from "@/composer/composer"
+ import { ComposerDropzone } from "@/composer/dropzone"
+ import type { ComposerModel } from "@/composer/model"
++import { PluginSlot } from "@/runtime/plugin/render"
++import type { SessionScreen } from "@opencode/plugin/gui"
+ import {
+   PromptProjectAddButton,
+   type PromptProject,
+@@ -61,6 +63,7 @@ export function NewSessionView(props: {
+   project: PromptProjectController
+   workspace: NewSessionWorkspaceController
+   location: ReturnType<typeof useNewSessionLocationDialog>
++  screen: SessionScreen
+ }) {
+   const [onboarding, setOnboarding, , onboardingReady] = persisted(
+     Persist.global("workspace-onboarding"),
+@@ -113,6 +116,14 @@ export function NewSessionView(props: {
+             />
+             <div class="mt-8 flex flex-col gap-3">
+               <div data-slot="new-session-composer" class="flex flex-col gap-1">
++                <PluginSlot
++                  at="composer.lane"
++                  input={{
++                    get screen() {
++                      return props.screen
++                    },
++                  }}
++                />
+                 <div class="relative z-10">
+                   <Composer model={props.composer} />
+                 </div>
+diff --git a/packages/app/src/runtime/platform/platform.tsx b/packages/app/src/runtime/platform/platform.tsx
+index 38a12334f2..2859128a32 100644
+--- a/packages/app/src/runtime/platform/platform.tsx
++++ b/packages/app/src/runtime/platform/platform.tsx
+@@ -39,6 +39,12 @@ type PlatformBase = {
+   /** App version */
+   version?: string
+ 
++  /**
++   * The directory this window opens chats in, when the host knows better than the server's own location: a VS Code
++   * workspace, or the folder of the file an editor was opened on. Undefined in a browser, which has no such window.
++   */
++  workspaceDirectory?: string
++
+   /** Open a web or mail URL in the default system application */
+   openExternal(url: string): void
+ 
+diff --git a/packages/app/src/runtime/plugin/host-apis.tsx b/packages/app/src/runtime/plugin/host-apis.tsx
+index d74740f03a..99140ab0a0 100644
+--- a/packages/app/src/runtime/plugin/host-apis.tsx
++++ b/packages/app/src/runtime/plugin/host-apis.tsx
+@@ -445,13 +445,8 @@ export function createHostApis() {
+     }),
+     // No command is registered before the interface mounts.
+     commands: () => ({ run: (id) => untrack(attached)?.run(id) ?? false }),
+-    screen: () => ({
+-      current: () => {
+-        const attached = current()
+-
+-        return attached?.current() ? attached.screen() : undefined
+-      },
+-    }),
++    // The screen of the composer on show, a session's or its draft's; either route attaches and clears its own.
++    screen: () => ({ current: () => current()?.screen() }),
+     // Before the interface mounts, reads return what an empty layout holds and writes wait for it.
+     layout: (plugin) => ({
+       narrow,
+diff --git a/packages/app/src/runtime/plugin/mounted-session.ts b/packages/app/src/runtime/plugin/mounted-session.ts
+index fba59dead4..c3ec148a8e 100644
+--- a/packages/app/src/runtime/plugin/mounted-session.ts
++++ b/packages/app/src/runtime/plugin/mounted-session.ts
+@@ -11,35 +11,14 @@ import {
+   untrack,
+   type Accessor,
+ } from "solid-js"
+-import type {
+-  BackgroundTask,
+-  Comments,
+-  Composer,
+-  Files,
+-  LineRange,
+-  ServerRef,
+-  MountedSession,
+-  SessionScreen,
+-} from "@opencode/plugin/gui"
+-import { useComments } from "@/composer/comments"
+-import { createComposerEditorActions } from "@/composer/editor/actions"
+-import { useComposerState } from "@/composer/persistence"
+-import type { ComposerStateValue } from "@/composer/state"
+-import { useLocal } from "@/providers/models/selection"
++import type { BackgroundTask, ServerRef, MountedSession } from "@opencode/plugin/gui"
+ import { useServer } from "@/runtime/server/current"
+ import { ServerConnection, useServers } from "@/runtime/server/registry"
+ import { isServerIncompatible } from "@/runtime/server/health-machine"
+ import { sessionInWorkspace, sessionProject, type SessionModel } from "@/session/model"
+-import { useFile } from "@/workspaces/files/model"
+-import { useWorkspaceLocation } from "@/workspaces/location"
+ import { pathKey } from "@/workspaces/path-key"
+ import { usePluginAttachment } from "./host-apis"
+-import {
+-  createComposerWriteState,
+-  transitionComposerWrite,
+-  type ComposerWriteEffect,
+-  type ComposerWriteEvent,
+-} from "./composer-write-machine"
++import { createScreenSurface } from "./screen-surface"
+ 
+ const noTasks: readonly BackgroundTask[] = []
+ 
+@@ -51,18 +30,12 @@ type ObjectRoot = { dispose?: () => void }
+  * routes another session, and the `SessionScreen` that owns the route-following files, comments and composer.
+  */
+ export function createMountedSession(session: SessionModel) {
+-  const file = useFile()
+-  const comments = useComments()
+-  const composer = useComposerState()
+-  const local = useLocal()
+   const server = useServer()
+   const servers = useServers()
+-  const location = useWorkspaceLocation()
+   const attachment = usePluginAttachment()
+   // The composer region owns background tasks and is created after the view.
+   const [background, setBackground] = createSignal<Accessor<readonly BackgroundTask[]>>()
+-  // The screen's composer view, created after this object, says whether it takes quotes and focuses its prompt.
+-  const [prompt, setPrompt] = createSignal<{ quotable: Accessor<boolean>; focus: () => void; focused: () => boolean }>()
++  const surface = createScreenSurface(() => session.data.isChild())
+ 
+   const serverRef: ServerRef = {
+     get id() {
+@@ -97,195 +70,6 @@ export function createMountedSession(session: SessionModel) {
+     },
+   }
+ 
+-  const files: Files = {
+-    get root() {
+-      return location().directory
+-    },
+-    ready: file.ready,
+-    resolve: file.normalize,
+-    absolute: file.absolute,
+-    get: file.get,
+-    missing: file.notFound,
+-    sync: (path, options) => {
+-      file.watch(path)
+-
+-      return file.load(path, options)
+-    },
+-    unwatch: file.unwatch,
+-    exists: file.exists,
+-    search: (query, options) =>
+-      options?.kind === "any" ? file.searchFilesAndDirectories(query, options) : file.searchFiles(query, options),
+-    selection: {
+-      // SAFETY: the file model returns the view cache's selection for the path, which its schema types as a line range.
+-      get: (path) => file.selectedLines(path) as LineRange | null | undefined,
+-      set: (path, range) => void file.setSelectedLines(path, range),
+-    },
+-    scroll: {
+-      get: (path) => ({
+-        // SAFETY: the file model returns the view cache's offsets for the path, which its schema types as numbers.
+-        top: file.scrollTop(path) as number | undefined,
+-        // SAFETY: as above.
+-        left: file.scrollLeft(path) as number | undefined,
+-      }),
+-      set(path, value) {
+-        if (value.top !== undefined) file.setScrollTop(path, value.top)
+-
+-        if (value.left !== undefined) file.setScrollLeft(path, value.left)
+-      },
+-    },
+-    tree: {
+-      list: file.tree.children,
+-      state: file.tree.state,
+-      sync: (path, options) => (options?.force ? file.tree.refresh(path) : file.tree.list(path)),
+-      expand: (path, options) => void file.tree.expand(path, options),
+-      collapse: (path) => void file.tree.collapse(path),
+-    },
+-  }
+-
+-  const commentFile = (id: string) => comments.all().find((item) => item.id === id)?.file
+-
+-  const comment: Comments = {
+-    list: (path) => (path ? comments.list(path) : comments.all()),
+-    add: comments.add,
+-    update(id, text) {
+-      const path = commentFile(id)
+-
+-      if (path) comments.update(path, id, text)
+-    },
+-    remove(id) {
+-      const path = commentFile(id)
+-
+-      if (path) comments.remove(path, id)
+-    },
+-    focus: { current: comments.focus, set: (value) => void comments.setFocus(value) },
+-    active: { current: comments.active, set: (value) => void comments.setActive(value) },
+-  }
+-
+-  // A write before the routed session's draft loads would replace the stored draft, so it waits for the load and then
+-  // applies to that session (`composer-write-machine.ts`). Later writes to that session queue behind it to keep call
+-  // order; other sessions' drafts do not wait for it.
+-  const writes = { state: createComposerWriteState<ComposerStateValue>() }
+-  // Events an effect raises synchronously, such as a write a queued write makes, wait behind that effect.
+-  const queue: ComposerWriteEvent<ComposerStateValue>[] = []
+-
+-  const dispatchWrite = (event: ComposerWriteEvent<ComposerStateValue>) => {
+-    queue.push(event)
+-
+-    if (queue.length === 1) untrack(drainWrites)
+-  }
+-
+-  const drainWrites = () => {
+-    const event = queue[0]
+-
+-    if (!event) return
+-
+-    try {
+-      const next = transitionComposerWrite(writes.state, event)
+-
+-      writes.state = next.state
+-      next.effects.forEach((effect) =>
+-        Promise.try(() => runWrite(effect)).catch((cause: unknown) =>
+-          console.error("[plugin] Composer write failed", cause),
+-        ),
+-      )
+-    } finally {
+-      queue.shift()
+-    }
+-
+-    drainWrites()
+-  }
+-
+-  const runWrite = (effect: ComposerWriteEffect<ComposerStateValue>) => {
+-    if (effect.type === "apply") return effect.write(effect.target)
+-
+-    if (effect.type === "drain") return dispatchWrite({ type: "drain.next", target: effect.target })
+-
+-    if (effect.type === "observe")
+-      return void effect.load.then(
+-        // One batch, so the waiting writes land as one change.
+-        () => batch(() => dispatchWrite({ type: "loaded", target: effect.target })),
+-        (cause: unknown) => dispatchWrite({ type: "failed", target: effect.target, cause }),
+-      )
+-
+-    console.error("[plugin] Composer draft load failed", effect.cause)
+-  }
+-
+-  onCleanup(() => dispatchWrite({ type: "disposed" }))
+-
+-  const write = (apply: (draft: ComposerStateValue) => void) =>
+-    dispatchWrite({
+-      type: "write",
+-      target: composer.capture(),
+-      load: composer.ready() ? undefined : composer.ready.promise,
+-      write: apply,
+-    })
+-
+-  // A subagent's session has no composer, so its draft is never sent.
+-  const edit = (apply: (draft: ReturnType<typeof createComposerEditorActions>) => void) => {
+-    if (!session.data.isChild()) write((target) => apply(createComposerEditorActions(target.store)))
+-  }
+-
+-  const composerRef: Composer = {
+-    text: () =>
+-      session.data.isChild()
+-        ? ""
+-        : composer
+-            .capture()
+-            .current()
+-            .map((part) => ("content" in part ? part.content : ""))
+-            .join(""),
+-    insert(text) {
+-      const value = text.replace(/\r\n?/g, "\n")
+-
+-      if (value) edit((draft) => draft.addText(value))
+-    },
+-    setText: (value) => edit((draft) => draft.setText(value.replace(/\r\n?/g, "\n"))),
+-    model() {
+-      const item = session.data.isChild() ? undefined : local.model.current()
+-
+-      if (!item) return
+-
+-      return { providerID: item.provider.id, modelID: item.id, variant: local.model.variant.current() }
+-    },
+-    setModel(model) {
+-      const item = session.data.isChild()
+-        ? undefined
+-        : local.model.list().find((entry) => entry.provider.id === model.providerID && entry.id === model.modelID)
+-
+-      if (!item || (model.variant !== undefined && !Object.keys(item.variants ?? {}).includes(model.variant)))
+-        return false
+-      // As the model picker selects: the model first, then a variant chosen with it.
+-      local.model.set({ providerID: model.providerID, modelID: model.modelID }, { recent: true })
+-
+-      if (model.variant !== undefined) local.model.variant.set(model.variant)
+-
+-      return true
+-    },
+-    setVariant(variant) {
+-      if (session.data.isChild() || !local.model.current()) return false
+-
+-      if (variant !== undefined && !local.model.variant.list().includes(variant)) return false
+-      local.model.variant.set(variant)
+-
+-      return true
+-    },
+-    attach: (part) => write((draft) => draft.context.add(part)),
+-    quotable: () => !!prompt()?.quotable(),
+-    focus(commentID, options) {
+-      if (commentID === undefined) return prompt()?.focus()
+-
+-      // Behind the writes still waiting, so it finds a quote an `attach` just before it added.
+-      write((draft) => {
+-        const item = draft.context.items().find((entry) => entry.type === "quote" && entry.commentID === commentID)
+-
+-        if (item) draft.quoteComment.set(item.key, options?.anchor)
+-      })
+-    },
+-    update: (id, patch) => write((draft) => draft.context.updateComment(id, patch)),
+-    detach: (id) => write((draft) => draft.context.removeComment(id)),
+-    focused: () => !!prompt()?.focused(),
+-  }
+-
+   // Each object's memos live in its own root, which ends when the next object replaces it: a kept object stops
+   // updating `project`, `listedProject` and `local`, and its other fields keep reading this session's data.
+   const create = (input: { id: string; directory: string; tab: string; visit: object }): MountedSession => {
+@@ -343,11 +127,7 @@ export function createMountedSession(session: SessionModel) {
+   }
+ 
+   // One object while this screen is mounted, whichever session it routes: its models follow the route.
+-  const screen: SessionScreen = Object.freeze({
+-    file: files,
+-    comment,
+-    composer: composerRef,
+-  })
++  const screen = surface.screen
+ 
+   const owner = getOwner()
+   const root: ObjectRoot = {}
+@@ -392,7 +172,6 @@ export function createMountedSession(session: SessionModel) {
+     screen,
+     view: mounted,
+     bindBackground: (tasks: Accessor<readonly BackgroundTask[]>) => setBackground(() => tasks),
+-    bindPrompt: (value: { quotable: Accessor<boolean>; focus: () => void; focused: () => boolean }) =>
+-      setPrompt(() => value),
++    bindPrompt: surface.bindPrompt,
+   }
+ }
+diff --git a/packages/app/src/runtime/plugin/screen-surface.ts b/packages/app/src/runtime/plugin/screen-surface.ts
+new file mode 100644
+index 0000000000..8af67dcb28
+--- /dev/null
++++ b/packages/app/src/runtime/plugin/screen-surface.ts
+@@ -0,0 +1,238 @@
++import { batch, createSignal, onCleanup, untrack, type Accessor } from "solid-js"
++import type { Comments, Composer, Files, LineRange, SessionScreen } from "@opencode/plugin/gui"
++import { useComments } from "@/composer/comments"
++import { createComposerEditorActions } from "@/composer/editor/actions"
++import { useComposerState } from "@/composer/persistence"
++import type { ComposerStateValue } from "@/composer/state"
++import { useLocal } from "@/providers/models/selection"
++import { useFile } from "@/workspaces/files/model"
++import { useWorkspaceLocation } from "@/workspaces/location"
++import {
++  createComposerWriteState,
++  transitionComposerWrite,
++  type ComposerWriteEffect,
++  type ComposerWriteEvent,
++} from "./composer-write-machine"
++
++/** What the composer view tells plugins about its prompt, once it renders. */
++export type ScreenPrompt = { quotable: Accessor<boolean>; focus: () => void; focused: () => boolean }
++
++/**
++ * The plugin-facing screen of one composer: its workspace files, its line comments and the prompt it edits. A session
++ * passes `isChild` so a subagent's composer takes no writes; a draft, which is never a child, does not.
++ */
++export function createScreenSurface(isChild: () => boolean) {
++  const file = useFile()
++  const comments = useComments()
++  const composer = useComposerState()
++  const local = useLocal()
++  const location = useWorkspaceLocation()
++  // The composer view is created after this surface and says whether it takes quotes and focuses its prompt.
++  const [prompt, setPrompt] = createSignal<ScreenPrompt>()
++
++  const files: Files = {
++    get root() {
++      return location().directory
++    },
++    ready: file.ready,
++    resolve: file.normalize,
++    absolute: file.absolute,
++    get: file.get,
++    missing: file.notFound,
++    sync: (path, options) => {
++      file.watch(path)
++
++      return file.load(path, options)
++    },
++    unwatch: file.unwatch,
++    exists: file.exists,
++    search: (query, options) =>
++      options?.kind === "any" ? file.searchFilesAndDirectories(query, options) : file.searchFiles(query, options),
++    selection: {
++      // SAFETY: the file model returns the view cache's selection for the path, which its schema types as a line range.
++      get: (path) => file.selectedLines(path) as LineRange | null | undefined,
++      set: (path, range) => void file.setSelectedLines(path, range),
++    },
++    scroll: {
++      get: (path) => ({
++        // SAFETY: the file model returns the view cache's offsets for the path, which its schema types as numbers.
++        top: file.scrollTop(path) as number | undefined,
++        // SAFETY: as above.
++        left: file.scrollLeft(path) as number | undefined,
++      }),
++      set(path, value) {
++        if (value.top !== undefined) file.setScrollTop(path, value.top)
++
++        if (value.left !== undefined) file.setScrollLeft(path, value.left)
++      },
++    },
++    tree: {
++      list: file.tree.children,
++      state: file.tree.state,
++      sync: (path, options) => (options?.force ? file.tree.refresh(path) : file.tree.list(path)),
++      expand: (path, options) => void file.tree.expand(path, options),
++      collapse: (path) => void file.tree.collapse(path),
++    },
++  }
++
++  const commentFile = (id: string) => comments.all().find((item) => item.id === id)?.file
++
++  const comment: Comments = {
++    list: (path) => (path ? comments.list(path) : comments.all()),
++    add: comments.add,
++    update(id, text) {
++      const path = commentFile(id)
++
++      if (path) comments.update(path, id, text)
++    },
++    remove(id) {
++      const path = commentFile(id)
++
++      if (path) comments.remove(path, id)
++    },
++    focus: { current: comments.focus, set: (value) => void comments.setFocus(value) },
++    active: { current: comments.active, set: (value) => void comments.setActive(value) },
++  }
++
++  // A write before the composer's draft loads would replace the stored draft, so it waits for the load and then applies
++  // to that prompt (`composer-write-machine.ts`). Later writes to it queue behind to keep call order.
++  const writes = { state: createComposerWriteState<ComposerStateValue>() }
++  // Events an effect raises synchronously, such as a write a queued write makes, wait behind that effect.
++  const queue: ComposerWriteEvent<ComposerStateValue>[] = []
++
++  const dispatchWrite = (event: ComposerWriteEvent<ComposerStateValue>) => {
++    queue.push(event)
++
++    if (queue.length === 1) untrack(drainWrites)
++  }
++
++  const drainWrites = () => {
++    const event = queue[0]
++
++    if (!event) return
++
++    try {
++      const next = transitionComposerWrite(writes.state, event)
++
++      writes.state = next.state
++      next.effects.forEach((effect) =>
++        Promise.try(() => runWrite(effect)).catch((cause: unknown) =>
++          console.error("[plugin] Composer write failed", cause),
++        ),
++      )
++    } finally {
++      queue.shift()
++    }
++
++    drainWrites()
++  }
++
++  const runWrite = (effect: ComposerWriteEffect<ComposerStateValue>) => {
++    if (effect.type === "apply") return effect.write(effect.target)
++
++    if (effect.type === "drain") return dispatchWrite({ type: "drain.next", target: effect.target })
++
++    if (effect.type === "observe")
++      return void effect.load.then(
++        // One batch, so the waiting writes land as one change.
++        () => batch(() => dispatchWrite({ type: "loaded", target: effect.target })),
++        (cause: unknown) => dispatchWrite({ type: "failed", target: effect.target, cause }),
++      )
++
++    console.error("[plugin] Composer draft load failed", effect.cause)
++  }
++
++  onCleanup(() => dispatchWrite({ type: "disposed" }))
++
++  const write = (apply: (draft: ComposerStateValue) => void) =>
++    dispatchWrite({
++      type: "write",
++      target: composer.capture(),
++      load: composer.ready() ? undefined : composer.ready.promise,
++      write: apply,
++    })
++
++  // A subagent's session has no composer, so its draft is never sent.
++  const edit = (apply: (draft: ReturnType<typeof createComposerEditorActions>) => void) => {
++    if (!isChild()) write((target) => apply(createComposerEditorActions(target.store)))
++  }
++
++  const pluginComposer: Composer = {
++    text: () =>
++      isChild()
++        ? ""
++        : composer
++            .capture()
++            .current()
++            .map((part) => ("content" in part ? part.content : ""))
++            .join(""),
++    insert(text) {
++      const value = text.replace(/\r\n?/g, "\n")
++
++      if (value) edit((draft) => draft.addText(value))
++    },
++    setText: (value) => edit((draft) => draft.setText(value.replace(/\r\n?/g, "\n"))),
++    model() {
++      const item = isChild() ? undefined : local.model.current()
++
++      if (!item) return
++
++      return { providerID: item.provider.id, modelID: item.id, variant: local.model.variant.current() }
++    },
++    setModel(model) {
++      const item = isChild()
++        ? undefined
++        : local.model.list().find((entry) => entry.provider.id === model.providerID && entry.id === model.modelID)
++
++      if (!item || (model.variant !== undefined && !Object.keys(item.variants ?? {}).includes(model.variant)))
++        return false
++      // As the model picker selects: the model first, then a variant chosen with it.
++      local.model.set({ providerID: model.providerID, modelID: model.modelID }, { recent: true })
++
++      if (model.variant !== undefined) local.model.variant.set(model.variant)
++
++      return true
++    },
++    setVariant(variant) {
++      if (isChild() || !local.model.current()) return false
++
++      if (variant !== undefined && !local.model.variant.list().includes(variant)) return false
++      local.model.variant.set(variant)
++
++      return true
++    },
++    attach: (part) => write((draft) => draft.context.add(part)),
++    attached: () =>
++      isChild()
++        ? []
++        : composer
++            .capture()
++            .context.items()
++            .flatMap((item) => (item.type === "file" ? [item.path] : [])),
++    quotable: () => !!prompt()?.quotable(),
++    focus(commentID, options) {
++      if (commentID === undefined) return prompt()?.focus()
++
++      // Behind the writes still waiting, so it finds a quote an `attach` just before it added.
++      write((draft) => {
++        const item = draft.context.items().find((entry) => entry.type === "quote" && entry.commentID === commentID)
++
++        if (item) draft.quoteComment.set(item.key, options?.anchor)
++      })
++    },
++    update: (id, patch) => write((draft) => draft.context.updateComment(id, patch)),
++    detach: (id) => write((draft) => draft.context.removeComment(id)),
++    focused: () => !!prompt()?.focused(),
++  }
++
++  const screen: SessionScreen = Object.freeze({
++    file: files,
++    comment,
++    composer: pluginComposer,
++  })
++
++  return {
++    screen,
++    bindPrompt: (value: ScreenPrompt) => setPrompt(() => value),
++  }
++}
+diff --git a/packages/app/src/runtime/server/runtime.tsx b/packages/app/src/runtime/server/runtime.tsx
+index dfccc14193..2ecf994f7d 100644
+--- a/packages/app/src/runtime/server/runtime.tsx
++++ b/packages/app/src/runtime/server/runtime.tsx
+@@ -41,6 +41,7 @@ import { useLanguage } from "@/runtime/i18n/language"
+ import { showToast } from "@/shell/notifications/toast"
+ import { formatServerError } from "./errors"
+ import { useSettings } from "@/settings/model"
++import { usePlatform } from "@/runtime/platform/platform"
+ import { timelinePreset } from "@opencode/session-ui/timeline/detail"
+ import type { SessionInfo } from "@opencode/client/promise"
+ import { projectForSession } from "@/shell/layout/helpers"
+@@ -201,6 +202,7 @@ function createServerController(
+ ) {
+   const language = useLanguage()
+   const settings = useSettings()
++  const platform = usePlatform()
+   const tabs = useTabs()
+   const currentRoute = useCurrentRoute()
+   const connKey = ServerConnection.key(conn)
+@@ -214,7 +216,9 @@ function createServerController(
+       listen: (handler) => sdk.event.listen((event) => handler({ name: event.type, details: event })),
+     },
+     connection: sdk.connection,
+-    directory: "",
++    // The host's directory (a VS Code workspace) is what a chat starts in; an embedded browser has none and follows
++    // the server's own location.
++    directory: platform.workspaceDirectory ?? "",
+     // The timeline shows tool output as text only, so screenshots in tool results never need their bytes here.
+     omitToolFileData: true,
+     onError(error) {
+@@ -334,6 +338,17 @@ function createServerController(
+       })
+   }
+ 
++  // The window's directory (a VS Code workspace) is where chats start. Registering it there also makes it the used
++  // project the Home list and the new-chat shortcut offer, ahead of whichever project was used last anywhere else.
++  const workspaceDirectory = platform.workspaceDirectory
++  let registered = false
++  if (workspaceDirectory)
++    createEffect(() => {
++      if (registered || !sync.project.ready()) return
++      registered = true
++      void add(workspaceDirectory)
++    })
++
+   return {
+     data,
+     sdk,
+diff --git a/packages/app/src/session/composer/region.tsx b/packages/app/src/session/composer/region.tsx
+index d1432a66e1..d05c765682 100644
+--- a/packages/app/src/session/composer/region.tsx
++++ b/packages/app/src/session/composer/region.tsx
+@@ -40,6 +40,7 @@ import { SessionQueuePanel } from "./queue-panel"
+ import { SessionGoLimitTray } from "./go-limit-tray"
+ import { SessionActivityChips, type SessionActivityItem } from "./activity-chips"
+ import { SessionComposerLane, useComposerLaneAlignment } from "./composer-lane"
++import { PluginSlot } from "@/runtime/plugin/render"
+ import { SessionTodoPill } from "./todo-pill"
+ import { sessionTodos, todoFinished } from "./todos"
+ import { useOpenSessionRoute } from "../session-identity-header"
+@@ -594,8 +595,26 @@ export function ActiveSessionComposerRegion(props: {
+             <Show when={todosVisible()}>
+               <SessionTodoPill todos={todos()} />
+             </Show>
+-            <SessionPluginPills session={props.view()} screen={props.screen} alignment={alignment} />
+-          </SessionComposerLane>
++            <PluginSlot
++              at="session.composer"
++              input={{
++                get screen() {
++                  return props.screen
++                },
++                get session() {
++                  return props.view()
++                },
++              }}
++            />
++            <PluginSlot
++              at="composer.lane"
++              input={{
++                get screen() {
++                  return props.screen
++                },
++              }}
++            />
++            <SessionPluginPills session={props.view()} screen={props.screen} alignment={alignment} />          </SessionComposerLane>
+           <SessionQueuePanel queue={props.model.queue} hidden={props.model.region.state.blocked()} />
+           <SessionGoLimitTray
+             sessionID={props.session.identity.params.id}
+diff --git a/packages/gui-plugins/AGENTS.md b/packages/gui-plugins/AGENTS.md
+index 7230a69b77..7f67428cf3 100644
+--- a/packages/gui-plugins/AGENTS.md
++++ b/packages/gui-plugins/AGENTS.md
+@@ -39,7 +39,7 @@ An instance lives from `setup` until it is disabled, reloaded, removed, or its w
+ - Everything registered through `ctx` (contributions, contracts, Ipc listeners, dialogs, embeds) is withdrawn with the current owner (a component, a `createKeyed` run), else with the instance. `ctx.dialogs.open` returns a handle whose `close()` closes that dialog alone. Anything else you start (timers, DOM listeners, subscriptions) needs teardown: in the window, Solid's `onCleanup` (setup runs under the plugin's root owner); in main, `ctx.onCleanup`, which runs at once when the instance is already gone. `setup` may instead return a cleanup, as server and TUI plugins do; window `setup` stays synchronous.
+ - Window `setup` is synchronous: an async one fails to compile, and the host fails it at runtime. Put async work in `createKeyed` or `createLatest`, with `ctx.signal` or a signal derived from it. Only main `setup` may be async. After every `await`, return if `ctx.signal` aborted before touching state or contributing; there is no owner after an `await`, so window teardown that starts later listens to `ctx.signal`. Pass the signal to Ipc calls and long work. Methods without an input schema take options only, e.g. `pairing.screenActive({ signal })`.
+ - Never keep a value from a shorter lifetime in a longer one. Read a server's `client`, `data` and `url` from its live `ServerRef` each time: a restarted or re-authenticated server gets a new controller under the same id. Keep per-session state in a session-scoped store, or in a map keyed by `session.key` that you prune.
+-- Each routed session gets its own frozen `MountedSession`, and a new one when it moves to another directory (same `key` and `visit`, new `directory`). A render receives the next one through `props.session` (panels), `input.session` (slots) or `state.session` (tab labels) without remounting. Read those getters where you use them; never copy the object into a variable or key a cache by it, which would rebuild on every switch. A `MountedSession` has no actions that follow the route: the workspace files, comments and composer belong to the session screen, one object while it routes A, B and A again. Panel callbacks take one named input with a non-null, constant `screen`; every `session.*` slot gets it too, but `window.bottom` does not. Render `tab` and `session` fields are live getters; lifecycle callbacks keep their event's tab and call metadata. Key per-screen caches by the screen. Commands and link handlers read `ctx.screen.current()` where they act, never once in setup. It is defined exactly when `ctx.sessions.current()` is: from just after the screen's first render until the route leaves it, so never on Home or a draft. Renders and render effects use their inputs, not these accessors; pass the owning screen on, as `Changes.watch(screen, source)` takes it.
++- Each routed session gets its own frozen `MountedSession`, and a new one when it moves to another directory (same `key` and `visit`, new `directory`). A render receives the next one through `props.session` (panels), `input.session` (slots) or `state.session` (tab labels) without remounting. Read those getters where you use them; never copy the object into a variable or key a cache by it, which would rebuild on every switch. A `MountedSession` has no actions that follow the route: the workspace files, comments and composer belong to the session screen, one object while it routes A, B and A again. Panel callbacks take one named input with a non-null, constant `screen`; every `session.*` slot gets it too, but `window.bottom` does not. Render `tab` and `session` fields are live getters; lifecycle callbacks keep their event's tab and call metadata. Key per-screen caches by the screen. Commands and link handlers read `ctx.screen.current()` where they act, never once in setup. It is defined from just after the screen's first render until the route leaves it, and on a draft too, so never on Home: `ctx.sessions.current()` is undefined there, the screen is not. Renders and render effects use their inputs, not these accessors; pass the owning screen on, as `Changes.watch(screen, source)` takes it.
+ - Main: `builtinMainContext(ctx).lifecycle.restart(handoff)` disposes every other plugin and keeps the caller active until the handoff settles; when it rejects, return to a state the user can retry from.
+ 
+ ## Failure is part of the contract
+diff --git a/packages/gui-plugins/README.md b/packages/gui-plugins/README.md
+index d3a685c55a..0cc914ae01 100644
+--- a/packages/gui-plugins/README.md
++++ b/packages/gui-plugins/README.md
+@@ -135,7 +135,7 @@ flowchart LR
+ - A session that moves to another directory gets a new object too, with the new `directory` and the same `key` and `visit`. Key per-session state by `key`.
+ - Renders stay mounted. The host hands them the next object through a reactive getter, so read `props.session` (panels), `input.session` (slots) or `state.session` (tab labels) where you use it, and never copy it into a variable.
+ - The workspace files, line comments and composer follow the route, so they belong to the session screen. An action through it targets the session routed at that moment. Read it inside a render or a handler, not once in setup. Key per-screen state, such as cached tab objects, by the screen; key per-session state by `session.key`.
+-- `ctx.screen.current()` and `ctx.sessions.current()` are published together in one batched effect after the screen's first render, with v2's original session-mount timing. Renders already receive their owning screen and session directly. Both public accessors are undefined during the first render, on Home, on a draft, before the interface mounts and once the route leaves the mounted screen. The screen has no `session` property.
++- `ctx.screen.current()` and `ctx.sessions.current()` are published together in one batched effect after the screen's first render, with v2's original session-mount timing. Renders already receive their owning screen and session directly. Both public accessors are undefined during the first render, on Home, before the interface mounts and once the route leaves the mounted screen. A draft has a screen and no session, so on a draft only `ctx.screen.current()` is defined: its composer and files target the prompt the draft will send. The screen has no `session` property.
+ - All panel callbacks take one named input: `list({ session, screen, open })`, `render({ tab, session, screen })`, `focus({ tab, session, screen, restored })`, `enter({ tab, session, screen })`, `close({ tab, session, screen })`, `reopen({ tab, session, screen })`, `normalize({ id, session, screen })`. Session fields are getters; the screen is the constant owning screen. Render tab fields are live getters too; lifecycle callbacks receive their event's tab. Stored ids and `restored` describe that call. Do not destructure live getters. Every `session.*` slot gets a non-null `screen`; `window.bottom` does not.
+ - Render effects can run before public publication too: change-list views call `Changes.watch(input.screen, source)`, not `ctx.screen.current()`, so their first demand is never lost.
+ - `fallback: true` opts a tab into selection when the stored selection is missing or cannot be selected; false or omission opts out. The host takes the first eligible regular tab, then a built-in's `first` tab, then a pinned tab, preserving order within each tier. Closing a tab still selects its neighbour.
+diff --git a/packages/plugin/src/gui/context.ts b/packages/plugin/src/gui/context.ts
+index 921f64623d..a0e1dbef92 100644
+--- a/packages/plugin/src/gui/context.ts
++++ b/packages/plugin/src/gui/context.ts
+@@ -110,8 +110,8 @@ export interface Context extends BaseContext {
+    */
+   readonly sessions: Sessions
+   /**
+-   * The mounted session screen and its route-following files, comments and composer. Read it where you act, so an
+-   * action targets the session routed at that moment; a `MountedSession` carries no such actions.
++   * The mounted session screen and its route-following files, comments and composer, or the screen of the draft on show.
++   * Read it where you act, so an action targets the prompt on show; a `MountedSession` carries no such actions.
+    *
+    * @example
+    * ```ts
+diff --git a/packages/plugin/src/gui/host-apis.ts b/packages/plugin/src/gui/host-apis.ts
+index fe7fc28731..f8cbebfad3 100644
+--- a/packages/plugin/src/gui/host-apis.ts
++++ b/packages/plugin/src/gui/host-apis.ts
+@@ -637,6 +637,14 @@ export interface Composer {
+    * @param part - The part to attach.
+    */
+   attach(part: ComposerFile | ComposerNote | ComposerQuote): void
++  /**
++   * The workspace paths of the files attached to the next prompt, in the order the composer shows them. Empty once the
++   * prompt is sent, and in a subagent's session, which has no composer. Reactive.
++   *
++   * @example
++   * const attached = new Set(screen.composer.attached())
++   */
++  attached(): readonly string[]
+   /**
+    * Whether the composer takes quotes now. False in a subagent's session, which has no composer, and while the
+    * composer runs shell commands. Reactive.
+@@ -746,6 +754,9 @@ export interface MountedSession extends SessionRef {
+  * B, then A again. It follows the route on purpose: its files, comments and composer are the screen's workspace models,
+  * and every action through them targets the session routed at that moment. Read it where you act, or pass it to the
+  * views that render inside it; a `MountedSession` you keep never acts on another session.
++ *
++ * A draft has a screen too, for the prompt that will become its session: its files and composer target the draft, it has
++ * no session to route, and its comments are empty until the session exists.
+  */
+ export interface SessionScreen {
+   /** The routed workspace's files. */
+@@ -759,10 +770,10 @@ export interface SessionScreen {
+ /** The session screen, while it routes the mounted session. */
+ export interface Screen {
+   /**
+-   * The mounted session screen: the same object for as long as it stays mounted, whichever session it routes. Defined
+-   * exactly when `Sessions.current()` is, after the screen's first render; undefined on Home, on a draft,
+-   * while the route has left the mounted screen, and before the app interface mounts. Panel callbacks and session
+-   * slots receive a non-null screen directly. Reactive.
++   * The screen of the composer on show: the mounted session's, the same object for as long as it stays mounted whichever
++   * session it routes, or the draft's while a draft is routed. Undefined on Home, while the route has left the mounted
++   * screen, and before the app interface mounts. Panel callbacks and session slots receive a non-null screen directly.
++   * Reactive.
+    */
+   current(): SessionScreen | undefined
+ }
+diff --git a/packages/plugin/src/gui/registries.ts b/packages/plugin/src/gui/registries.ts
+index 09481f4dab..2c16385d6f 100644
+--- a/packages/plugin/src/gui/registries.ts
++++ b/packages/plugin/src/gui/registries.ts
+@@ -897,6 +897,21 @@ export interface SlotMap {
+     /** The routed session; a new object when another session is routed. */
+     readonly session: MountedSession
+   }
++  /** The composer lane's row: above the composer, beside the app's own chips. */
++  readonly "session.composer": {
++    /** The owning session screen; always present. */
++    readonly screen: SessionScreen
++    /** The routed session; a new object when another session is routed. */
++    readonly session: MountedSession
++  }
++  /**
++   * The composer lane's row on any screen, with or without a session behind it: above the prompt of a session, or of the
++   * draft that becomes one. Use `session.composer` instead when the content needs the routed session.
++   */
++  readonly "composer.lane": {
++    /** The owning session screen; on a draft, the screen of the prompt it will send. */
++    readonly screen: SessionScreen
++  }
+ }
+ 
+ /** Content for one of the host's slots, typed by `at`. */

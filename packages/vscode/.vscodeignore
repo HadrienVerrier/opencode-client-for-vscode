@@ -1,0 +1,12 @@
+.git
+.vscode
+node_modules
+src
+test
+tsconfig*.json
+vite.config.ts
+esbuild.mjs
+index.html
+bun.lock
+# Source maps: the webview loads none, and the extension's own is for a debugger VS Code does not attach.
+**/*.map

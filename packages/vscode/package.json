@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "opencode-vscode",
+  "displayName": "OpenCode (Unofficial)",
+  "description": "The OpenCode coding agent in a VS Code sidebar, connected to your own OpenCode server.",
+  "version": "0.1.0",
+  "publisher": "hadrien",
+  "license": "MIT",
+  "private": true,
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1F1F1F",
+    "theme": "dark"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "keywords": [
+    "opencode",
+    "ai",
+    "agent",
+    "chat",
+    "coding agent",
+    "assistant",
+    "sidebar"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HadrienVerrier/opencode-for-vscode.git",
+    "directory": "packages/vscode"
+  },
+  "homepage": "https://github.com/HadrienVerrier/opencode-for-vscode#readme",
+  "bugs": {
+    "url": "https://github.com/HadrienVerrier/opencode-for-vscode/issues"
+  },
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "main": "./dist/extension/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "opencode.open",
+        "title": "OpenCode: Open",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "opencode.openInEditor",
+        "title": "OpenCode: Open in Editor Tab"
+      },
+      {
+        "command": "opencode.configure",
+        "title": "OpenCode: Configure Server"
+      },
+      {
+        "command": "opencode.installOpenCode",
+        "title": "OpenCode: Install OpenCode 2"
+      },
+      {
+        "command": "opencode.switchServer",
+        "title": "OpenCode: Switch Server",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "opencode.signOut",
+        "title": "OpenCode: Sign Out of Server"
+      },
+      {
+        "command": "opencode.checkServer",
+        "title": "OpenCode: Check Server Connection"
+      },
+      {
+        "command": "opencode.reload",
+        "title": "OpenCode: Reload Webview"
+      },
+      {
+        "command": "opencode.addSelection",
+        "title": "OpenCode: Add Selection to Chat"
+      },
+      {
+        "command": "opencode.addFile",
+        "title": "OpenCode: Add File to Chat"
+      },
+      {
+        "command": "opencode.addOpenEditors",
+        "title": "OpenCode: Add Open Editors to Chat"
+      },
+      {
+        "command": "opencode.newSession",
+        "title": "OpenCode: New Chat"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opencode",
+          "title": "OpenCode",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "opencode": [
+        {
+          "type": "webview",
+          "id": "opencode.sidebar",
+          "name": "OpenCode"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OpenCode",
+      "properties": {
+        "opencode.serverUrl": {
+          "type": "string",
+          "default": "",
+          "description": "URL of the OpenCode server, for example http://127.0.0.1:4096."
+        },
+        "opencode.webviewPort": {
+          "type": "number",
+          "default": 0,
+          "description": "Loopback port that serves the GUI to the webview. 0 picks a free port and remembers it."
+        },
+        "opencode.openOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reveal the OpenCode view when VS Code starts."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "opencode.switchServer",
+          "when": "view == opencode.sidebar",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "opencode.switchServer",
+          "when": "activeWebviewPanelId == opencode",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "opencode.addSelection",
+          "when": "editorHasSelection",
+          "group": "opencode@1"
+        },
+        {
+          "command": "opencode.addFile",
+          "group": "opencode@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "opencode.addFile",
+          "when": "resourceScheme == file",
+          "group": "opencode"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "opencode.open",
+        "key": "ctrl+alt+o",
+        "mac": "cmd+alt+o"
+      },
+      {
+        "command": "opencode.newSession",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      },
+      {
+        "command": "opencode.addSelection",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "bun run build:host && bun run build:extension",
+    "build:host": "vite build",
+    "build:extension": "node esbuild.mjs",
+    "watch:host": "vite build --watch",
+    "watch:extension": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.host.json --noEmit",
+    "typecheck:tsc": "bun run typecheck",
+    "package": "bun x @vscode/vsce package --no-dependencies",
+    "publish": "bun run build && bun x @vscode/vsce publish --no-dependencies",
+    "test": "bun test test"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/vscode": "^1.94.0",
+    "@typescript/native": "catalog:",
+    "esbuild": "0.25.3",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-solid": "catalog:"
+  },
+  "dependencies": {
+    "@opencode/app": "workspace:*",
+    "solid-js": "catalog:"
+  }
+}
