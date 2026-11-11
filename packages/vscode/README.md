@@ -51,7 +51,7 @@ because the client protocol moves with the server. Rebuild the extension when yo
 ## Getting started
 
 1. Install the extension from the marketplace, or from a VSIX:
-   `code --install-extension opencode-for-vscode-gui-0.1.0.vsix`.
+   `code --install-extension opencode-client-for-vscode-0.1.0.vsix`.
 2. Click the OpenCode icon in the activity bar, or run `OpenCode: Open`.
 3. With no `opencode.serverUrl` set, the extension starts a local server and connects to it. No setup
    is needed when the `opencode` CLI is already on the machine.
@@ -199,8 +199,8 @@ cd packages/vscode
 bun run build          # GUI (vite) + extension (esbuild)
 bun run typecheck      # extension and host sources
 bun test test
-bun run package        # opencode-for-vscode-gui-0.1.0.vsix
-code --install-extension opencode-for-vscode-gui-0.1.0.vsix
+bun run package        # opencode-client-for-vscode-0.1.0.vsix
+code --install-extension opencode-client-for-vscode-0.1.0.vsix
 ```
 
 To iterate instead, open `packages/vscode` in VS Code, press F5, then run `OpenCode: Configure Server`
