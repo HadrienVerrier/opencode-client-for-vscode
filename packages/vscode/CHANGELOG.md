@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- A file or line selection shared with the chat stays visible under the sent message as a card naming its lines
+  (`Chart.yaml:18-19`), instead of leaving no trace once the composer clears.
+
 ## 0.2.0
 
 - Attached line selections reach the model labelled with their file and lines (`Description: path, lines 18-19`),

@@ -19,6 +19,128 @@ index be74198b07..3533d664ce 100644
    [data-slot^="composer-attachments-fade-"] {
      visibility: hidden;
    }
+diff --git a/packages/app/src/composer/comment-note.ts b/packages/app/src/composer/comment-note.ts
+index 47ed31c5fc..d8cf25005b 100644
+--- a/packages/app/src/composer/comment-note.ts
++++ b/packages/app/src/composer/comment-note.ts
+@@ -23,6 +23,8 @@ export const PromptAttachmentReference = Persistence.struct({
+   name: Schema.String,
+   mime: Schema.String,
+   path: Schema.String,
++  // The lines the user shared, when only part of the file was attached.
++  selection: Persistence.optional(FileSelection),
+ })
+ 
+ export type PromptAttachmentReference = typeof PromptAttachmentReference.Type
+diff --git a/packages/app/src/composer/request.test.ts b/packages/app/src/composer/request.test.ts
+index 1382d66a24..2342de5860 100644
+--- a/packages/app/src/composer/request.test.ts
++++ b/packages/app/src/composer/request.test.ts
+@@ -314,4 +314,23 @@ describe("buildPromptRequest", () => {
+ 
+     expect(result.files.map((file) => file.uri)).toEqual([row.uri])
+   })
++
++  test("keeps an attached file and its lines for the timeline", () => {
++    const selection = { startLine: 18, startChar: 0, endLine: 19, endChar: 0 }
++    const result = buildPromptRequest({
++      prompt: [],
++      context: [
++        { key: "file:helm/Chart.yaml:18:19", type: "file", path: "helm/Chart.yaml", selection },
++        { key: "file:notes.md", type: "file", path: "notes.md", comment: "Keep this" },
++      ],
++      images: [],
++      text: "",
++      sessionDirectory: "/repo",
++    })
++
++    // The commented file already shows as its comment, which names it.
++    expect(result.attachments).toEqual([
++      { name: "Chart.yaml", mime: "text/plain", path: "helm/Chart.yaml", selection },
++    ])
++  })
+ })
+diff --git a/packages/app/src/composer/request.ts b/packages/app/src/composer/request.ts
+index 7009d7aae6..47df143153 100644
+--- a/packages/app/src/composer/request.ts
++++ b/packages/app/src/composer/request.ts
+@@ -89,6 +89,32 @@ const isSkillAttachment = (part: Prompt[number]): part is SkillPart => part.type
+ 
+ const isPathAttachment = (part: Prompt[number]): part is PathAttachmentPart => part.type === "path"
+ 
++const pathReferences = (prompt: Prompt) =>
++  prompt.filter(isPathAttachment).map((part) => ({ name: part.filename, mime: part.mime, path: part.path }))
++
++// A commented file already shows as its comment, which names the file and lines.
++const fileReferences = (context: readonly ContextItem[]) =>
++  context.flatMap((item) =>
++    item.type === "file" && !item.comment?.trim()
++      ? [
++          {
++            name: item.name ?? getFilename(item.path),
++            mime: "text/plain",
++            path: item.path,
++            selection: item.selection && { ...item.selection },
++          },
++        ]
++      : [],
++  )
++
++/**
++ * What the message keeps showing after the composer clears: the files it was sent with, as path references. A file the
++ * user attached through the composer has no mention in the text, so without this it leaves no trace in the timeline.
++ */
++export function attachmentReferences(input: { readonly prompt: Prompt; readonly context: readonly ContextItem[] }) {
++  return [...pathReferences(input.prompt), ...fileReferences(input.context)]
++}
++
+ /** The sent form of a note: optional display fields, link and live subject travel only when present. */
+ export function noteComment(item: NoteContextItem, comment: string) {
+   const note: NoteComment = {
+@@ -212,15 +238,14 @@ export function buildPromptRequest(input: BuildPromptRequestInput): PromptReques
+     name: attachment.sourcePath ?? attachment.filename,
+   }))
+ 
+-  // Like comments, path references reach the model as text and the message UI through metadata.
+-  const attachments = input.prompt
+-    .filter(isPathAttachment)
+-    .map((part) => ({ name: part.filename, mime: part.mime, path: part.path }))
++  // Like comments, path references reach the model as text and the message UI through metadata. Files attached
++  // through the composer reach the model as attachments, so only mentions are spelled out in the text.
++  const attachments = attachmentReferences(input)
+ 
+   return {
+     text: [
+       ...(text.trim() ? [text] : []),
+-      ...attachments.map(formatAttachmentReference),
++      ...pathReferences(input.prompt).map(formatAttachmentReference),
+       ...comments.map((comment) => {
+         if (comment.type === "note") return formatNoteComment(comment)
+ 
+diff --git a/packages/app/src/composer/submit.ts b/packages/app/src/composer/submit.ts
+index 1dd260ad89..b9f4517bd4 100644
+--- a/packages/app/src/composer/submit.ts
++++ b/packages/app/src/composer/submit.ts
+@@ -12,7 +12,7 @@ import type {
+   ComposerSession,
+   ComposerSubmissionHandle,
+ } from "./adapter"
+-import { buildPromptRequest, commentMentions, noteComment, quoteComment } from "./request"
++import { attachmentReferences, buildPromptRequest, commentMentions, noteComment, quoteComment } from "./request"
+ import { getDirectory, getFilename } from "@opencode/util/path"
+ import { setCursorPosition } from "./editor/dom"
+ import { blobDataUrl, resolveBlobUrl } from "@/runtime/persistence/drafts"
+@@ -483,9 +483,7 @@ function handoffMessage(
+     })),
+     metadata: {
+       displayText: text,
+-      attachments: value.prompt.flatMap((part) =>
+-        part.type === "path" ? [{ name: part.filename, mime: part.mime, path: part.path }] : [],
+-      ),
++      attachments: attachmentReferences(value),
+       comments: value.context.flatMap((item): PromptComment[] => {
+         if (item.type === "quote") return [quoteComment(item)]
+ 
 diff --git a/packages/app/src/new-session/screen.tsx b/packages/app/src/new-session/screen.tsx
 index 9e50542095..3d55e5076d 100644
 --- a/packages/app/src/new-session/screen.tsx
@@ -874,3 +996,45 @@ index 09481f4dab..2c16385d6f 100644
  }
  
  /** Content for one of the host's slots, typed by `at`. */
+diff --git a/packages/session-ui/src/actions.ts b/packages/session-ui/src/actions.ts
+index 08ce7de03c..914c571f25 100644
+--- a/packages/session-ui/src/actions.ts
++++ b/packages/session-ui/src/actions.ts
+@@ -32,6 +32,8 @@ export type SessionUserAttachmentReference = {
+   name: string
+   mime: string
+   path: string
++  /** The lines the user shared, when only part of the file was attached. */
++  selection?: { startLine: number; endLine: number }
+ }
+ 
+ export type SessionUserActions = {
+diff --git a/packages/session-ui/src/message/message-content.tsx b/packages/session-ui/src/message/message-content.tsx
+index dc5fff005c..7cf21435f7 100644
+--- a/packages/session-ui/src/message/message-content.tsx
++++ b/packages/session-ui/src/message/message-content.tsx
+@@ -507,7 +507,7 @@ export function CurrentUserMessageDisplay(props: {
+       <div data-slot="user-message-attachments">
+         <For each={references()}>
+           {(file) => (
+-            <AttachmentCard title={file.name} hover={file.path}>
++            <AttachmentCard title={referenceTitle(file)} hover={file.path}>
+               {typeLabel(file.name, file.mime, i18n.t("ui.common.file"))}
+             </AttachmentCard>
+           )}
+@@ -806,6 +806,15 @@ function UserMessageFold(props: {
+   )
+ }
+ 
++/** A reference names the lines it came from, as the composer's card did before the prompt was sent. */
++function referenceTitle(file: SessionUserAttachmentReference) {
++  if (!file.selection) return file.name
++  const start = Math.min(file.selection.startLine, file.selection.endLine)
++  const end = Math.max(file.selection.startLine, file.selection.endLine)
++
++  return `${file.name}:${start === end ? start : `${start}-${end}`}`
++}
++
+ function viewportTop(scroller: Element) {
+   return scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top
+ }
