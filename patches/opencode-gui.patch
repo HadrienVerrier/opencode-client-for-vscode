@@ -793,10 +793,22 @@ index 921f64623d..a0e1dbef92 100644
     * @example
     * ```ts
 diff --git a/packages/plugin/src/gui/host-apis.ts b/packages/plugin/src/gui/host-apis.ts
-index fe7fc28731..f8cbebfad3 100644
+index fe7fc28731..a78c103a81 100644
 --- a/packages/plugin/src/gui/host-apis.ts
 +++ b/packages/plugin/src/gui/host-apis.ts
-@@ -637,6 +637,14 @@ export interface Composer {
+@@ -456,6 +456,11 @@ export interface ComposerFile {
+   }
+   /** Text the chip previews. */
+   preview?: string
++  /**
++   * Text the model reads above the file's content, such as the path and lines the content came from. An attachment
++   * without it reaches the model as a bare snippet under the file's name.
++   */
++  description?: string
+   /** The user's comment on the attachment. */
+   comment?: string
+   /** The id that `Composer.update` and `detach` take. */
+@@ -637,6 +642,14 @@ export interface Composer {
     * @param part - The part to attach.
     */
    attach(part: ComposerFile | ComposerNote | ComposerQuote): void
@@ -811,7 +823,7 @@ index fe7fc28731..f8cbebfad3 100644
    /**
     * Whether the composer takes quotes now. False in a subagent's session, which has no composer, and while the
     * composer runs shell commands. Reactive.
-@@ -746,6 +754,9 @@ export interface MountedSession extends SessionRef {
+@@ -746,6 +759,9 @@ export interface MountedSession extends SessionRef {
   * B, then A again. It follows the route on purpose: its files, comments and composer are the screen's workspace models,
   * and every action through them targets the session routed at that moment. Read it where you act, or pass it to the
   * views that render inside it; a `MountedSession` you keep never acts on another session.
@@ -821,7 +833,7 @@ index fe7fc28731..f8cbebfad3 100644
   */
  export interface SessionScreen {
    /** The routed workspace's files. */
-@@ -759,10 +770,10 @@ export interface SessionScreen {
+@@ -759,10 +775,10 @@ export interface SessionScreen {
  /** The session screen, while it routes the mounted session. */
  export interface Screen {
    /**

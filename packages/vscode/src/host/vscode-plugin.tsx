@@ -1,9 +1,10 @@
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js"
+import { createSignal, For, onCleanup, Show } from "solid-js"
 import { LinkHandler, Slot, Style, Plugin, type SessionScreen } from "@opencode/plugin/gui"
 import { checkFileLinkExists, parseFileLink } from "../../../gui-plugins/src/file/resolve-link"
 import { label, offeredFiles } from "./chips"
 import { hostConfig, onChat, send } from "./bridge"
 import { isEditorLink } from "../shared/open-file"
+import { selectionDescription } from "../shared/selection"
 import type { ContextAttachment } from "../shared/protocol"
 import en from "./i18n/en"
 
@@ -20,26 +21,18 @@ const setup: Plugin.Setup<typeof definition> = (ctx) => {
   // A plain browser tab has no extension behind it, so the file panel keeps every link.
   if (window.parent === window) return
 
-  // The GUI keeps its own server list, which survives an extension rename that empties its secrets:
-  // hand the password it connects with to the extension, whose status bar checks the same server.
-  const reported = new Map<string, string>()
-  createEffect(() => {
-    for (const id of ctx.servers.list()) {
-      const server = ctx.servers.get(id)
-      if (!server?.password || reported.get(server.url) === server.password) continue
-      reported.set(server.url, server.password)
-      send({ type: "opencode/credential", serverUrl: server.url, password: server.password })
-    }
-  })
-
   // Files open in the editor, pushed by the extension on every tab and editor switch.
   const [editors, setEditors] = createSignal<{ paths: readonly string[]; active?: string }>({ paths: [] })
 
   const attach = (screen: SessionScreen, attachment: ContextAttachment, commentID?: string) => {
+    const path = screen.file.resolve(attachment.path)
+
     screen.composer.attach({
       type: "file",
-      path: screen.file.resolve(attachment.path),
+      path,
       commentID,
+      // The model reads the attached lines' content but not where they came from, so the description names both.
+      description: selectionDescription({ ...attachment, path }),
       selection: attachment.startLine
         ? {
             startLine: attachment.startLine,

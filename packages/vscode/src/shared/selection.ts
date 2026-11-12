@@ -16,3 +16,19 @@ export function selectionRange(selection: {
   const end = selection.end.line + 1
   return { startLine: Math.min(start, end), endLine: Math.max(start, end) }
 }
+
+/**
+ * What the model reads above the attached lines: the server sends a selection's content unlabelled, so without this
+ * the model sees a snippet and cannot tell which file or lines it covers. Undefined for a whole file, which needs no
+ * label.
+ */
+export function selectionDescription(input: {
+  readonly path: string
+  readonly startLine?: number
+  readonly endLine?: number
+}) {
+  if (input.startLine === undefined) return
+  const end = input.endLine ?? input.startLine
+  const lines = end === input.startLine ? `${input.startLine}` : `${input.startLine}-${end}`
+  return `${input.path}, lines ${lines}`
+}

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Attached line selections reach the model labelled with their file and lines (`Description: path, lines 18-19`),
+  instead of an unlabelled snippet under the file name.
+- The extension adopts the password the GUI signed in with, so the status bar checks the same server and shows the
+  version instead of a sign-in notice.
+- The status bar switches server or configures the connection when clicked.
+- The sidebar and editor tab paint the editor background while the GUI boots, so it no longer flashes white.
+
 ## 0.1.1
 
 - Repository renamed to `opencode-client-for-vscode`; marketplace links updated.
