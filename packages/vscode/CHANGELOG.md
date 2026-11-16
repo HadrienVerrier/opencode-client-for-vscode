@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- A server on a newer minor version (2.3.0 with a GUI built for 2.2.7) no longer shows a warning written
+  for whoever builds the extension: the mismatch goes to the output log, and only a different major
+  version asks the user to update the extension.
+
 ## 0.2.1
 
 - A file or line selection shared with the chat stays visible under the sent message as a card naming its lines

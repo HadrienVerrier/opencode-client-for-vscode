@@ -699,9 +699,13 @@ async function check(context: ExtensionContext): Promise<{ error?: string }> {
 
   if (!result.compatible && notice !== "version") {
     notice = "version"
-    void window.showWarningMessage(
-      `OpenCode: GUI built for ${GUI_VERSION}, server is ${result.version}. Rebuild packages/vscode when you upgrade the server.`,
-    )
+    // A newer minor server is normal: it updates on its own and the GUI usually keeps working, so this stays a
+    // line for whoever builds the extension. Only a major change moves the protocol enough to tell the user.
+    log(`GUI built for ${GUI_VERSION}, server is ${result.version}`)
+    if (GUI_VERSION.split(".")[0] !== result.version.split(".")[0])
+      void window.showWarningMessage(
+        `OpenCode: this extension is built for OpenCode ${GUI_VERSION.split(".")[0]}.x, and the server is ${result.version}. Update the extension.`,
+      )
   }
 
   if (result.compatible) notice = undefined

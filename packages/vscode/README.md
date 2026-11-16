@@ -45,13 +45,14 @@ editor as the place where you read and write the code.
   or `npm install -g @opencode/cli` on Windows) and checks again when that terminal closes.
 
 The GUI is built from the `@opencode/app` version in this repository. On activation the extension
-compares the server's `/api/info` with that version and warns when the major or minor version differs,
-because the client protocol moves with the server. Rebuild the extension when you upgrade the server.
+compares the server's `/api/info` with that version. A newer minor server is normal and only noted
+in the output log; a different major version means the protocol moved, and the extension asks you to
+update it.
 
 ## Getting started
 
 1. Install the extension from the marketplace, or from a VSIX:
-   `code --install-extension opencode-client-for-vs-code-0.1.0.vsix`.
+   `code --install-extension opencode-client-for-vs-code-0.2.2.vsix`.
 2. Click the OpenCode icon in the activity bar, or run `OpenCode: Open`.
 3. With no `opencode.serverUrl` set, the extension starts a local server and connects to it. No setup
    is needed when the `opencode` CLI is already on the machine.
@@ -189,8 +190,8 @@ on, the result of every server check, and the project it named.
   Remote-SSH, that is your local machine: use a URL the local machine can reach, or forward the port.
 - **The password is rejected.** Run `OpenCode: Sign Out of Server`, then `OpenCode: Configure Server`
   and enter it again.
-- **A version warning.** The GUI and the server are from different releases. Rebuild the extension
-  against the same `@opencode/app` version, or upgrade the server.
+- **A version warning.** The server's major version differs from the one the GUI was built for.
+  Update the extension, or run a server from the same major release.
 
 ## Building from source
 
@@ -199,8 +200,8 @@ cd packages/vscode
 bun run build          # GUI (vite) + extension (esbuild)
 bun run typecheck      # extension and host sources
 bun test test
-bun run package        # opencode-client-for-vs-code-0.1.0.vsix
-code --install-extension opencode-client-for-vs-code-0.1.0.vsix
+bun run package        # opencode-client-for-vs-code-0.2.2.vsix
+code --install-extension opencode-client-for-vs-code-0.2.2.vsix
 ```
 
 To iterate instead, open `packages/vscode` in VS Code, press F5, then run `OpenCode: Configure Server`
